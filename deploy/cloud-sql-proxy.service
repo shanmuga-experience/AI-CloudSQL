@@ -1,0 +1,19 @@
+[Unit]
+Description=Cloud SQL Auth Proxy (for the Cloud SQL AI Advisor dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dbdash
+# install.sh replaces __PROXY_ARGS__, e.g.
+#   --private-ip --address 127.0.0.1 --port 3306 my-project:asia-south1:my-instance
+ExecStart=/usr/local/bin/cloud-sql-proxy __PROXY_ARGS__
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

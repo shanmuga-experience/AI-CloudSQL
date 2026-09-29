@@ -1,0 +1,21 @@
+[Unit]
+Description=Cloud SQL AI Advisor - DB health dashboard (collector + web on 127.0.0.1)
+After=network-online.target cloud-sql-proxy.service
+Wants=network-online.target cloud-sql-proxy.service
+
+[Service]
+User=dbdash
+WorkingDirectory=/opt/dbdash/app
+ExecStart=/opt/dbdash/venv/bin/python collector/collector.py --serve
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+# The only places the app writes: collector/data (history) and src/status.json
+ReadWritePaths=/opt/dbdash/app/collector /opt/dbdash/app/src
+
+[Install]
+WantedBy=multi-user.target

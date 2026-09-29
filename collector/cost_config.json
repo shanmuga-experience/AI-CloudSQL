@@ -1,0 +1,10 @@
+{
+  "_disclaimer": "These are EDITABLE, PUBLIC LIST-PRICE ASSUMPTIONS (approximate GCP Cloud SQL for MySQL on-demand pricing, us-central1, per published rate cards). They are NOT your actual invoice, committed-use discount, or negotiated rate. Edit these numbers to match your contract and region for a more accurate estimate — the dashboard always labels figures derived from them as estimates.",
+  "vcpu_hour_usd": 0.0413,
+  "memory_gb_hour_usd": 0.0070,
+  "storage_gb_month_usd": 0.17,
+  "hours_per_month": 730,
+  "ha_multiplier": 2.0,
+  "nonprod_offhours_uptime_fraction": 0.36,
+  "_nonprod_offhours_note": "Assumes a non-production instance only needs to run ~12h/day on weekdays (60 of 168 hours/week) instead of 24/7."
+}

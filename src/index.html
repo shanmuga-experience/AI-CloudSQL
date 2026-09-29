@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Database Health Dashboard</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #131a22;
+    --panel-2: #0f151c;
+    --border: #223140;
+    --text: #e6edf3;
+    --text-dim: #93a4b5;
+    --text-faint: #5b6b7b;
+    --accent: #4da3ff;
+    --ok: #2ecc71;
+    --ok-bg: rgba(46, 204, 113, 0.12);
+    --warn: #f5a623;
+    --warn-bg: rgba(245, 166, 35, 0.14);
+    --crit: #ef4444;
+    --crit-bg: rgba(239, 68, 68, 0.14);
+    --unavail: #7d8b99;
+    --unavail-bg: rgba(125, 139, 153, 0.14);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.4;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 24px 64px; }
+
+  .topbar {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .brand h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  .instance-name { color: var(--text-dim); font-size: 14px; }
+  .mode-badge {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .mode-badge.mock { color: var(--accent); border-color: rgba(77,163,255,0.4); }
+  .meta { text-align: right; font-size: 12px; color: var(--text-faint); }
+  .placeholder-banner {
+    background: var(--warn-bg); border: 1px solid rgba(245,166,35,0.4);
+    color: var(--warn); padding: 8px 14px; border-radius: 8px; font-size: 13px;
+    margin-bottom: 18px; display: none;
+  }
+
+  .sources-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+  .source-pill {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text-dim);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--crit); }
+  .source-pill .reason { color: var(--text-faint); }
+
+  .hero {
+    display: grid; grid-template-columns: 220px 1fr; gap: 24px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px; margin-bottom: 22px; align-items: center;
+  }
+  .score-ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .score-num { font-size: 44px; font-weight: 700; }
+  .score-label {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3px 12px; border-radius: 999px;
+  }
+  .score-label.Healthy { color: var(--ok); background: var(--ok-bg); }
+  .score-label.Degraded { color: var(--warn); background: var(--warn-bg); }
+  .score-label.Critical { color: var(--crit); background: var(--crit-bg); }
+  .hero-summary h2 { margin: 0 0 6px; font-size: 15px; color: var(--text-dim); font-weight: 500; }
+  .hero-summary p { margin: 0; font-size: 14px; color: var(--text-dim); }
+
+  h3.section-title {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-dim); margin: 0 0 10px;
+  }
+  section { margin-bottom: 24px; }
+
+  .alerts-list { display: flex; flex-direction: column; gap: 10px; }
+  .alert-card {
+    border-radius: 10px; padding: 12px 14px; border: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .alert-card.warning { border-left: 4px solid var(--warn); }
+  .alert-card.critical { border-left: 4px solid var(--crit); }
+  .alert-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .sev-badge {
+    font-size: 10px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;
+    padding: 2px 7px; border-radius: 5px;
+  }
+  .sev-badge.warning { color: var(--warn); background: var(--warn-bg); }
+  .sev-badge.critical { color: var(--crit); background: var(--crit-bg); }
+  .alert-msg { font-size: 14px; }
+  .alert-action { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+  .alert-action b { color: var(--text); font-weight: 600; }
+  .empty-note {
+    color: var(--text-faint); font-size: 13px; padding: 10px 0;
+  }
+
+  .ai-card {
+    background: var(--panel); border: 1px solid rgba(77,163,255,0.35);
+    border-radius: 10px; padding: 14px; margin-bottom: 10px;
+  }
+  .ai-card .metric-name { font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .ai-tag {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--accent); background: rgba(77,163,255,0.12); padding: 2px 7px; border-radius: 5px;
+  }
+  .ai-row { font-size: 13px; margin: 4px 0; color: var(--text-dim); }
+  .ai-row b { color: var(--text); }
+
+  .range-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 14px;
+  }
+  .range-quick { display: flex; gap: 4px; flex-wrap: wrap; }
+  .range-btn {
+    font: inherit; font-size: 12px; color: var(--text-dim); background: transparent;
+    border: 1px solid var(--border); border-radius: 7px; padding: 5px 10px; cursor: pointer;
+  }
+  .range-btn:hover { color: var(--text); border-color: var(--accent); }
+  .range-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(77,163,255,0.1); }
+  .range-custom { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+  .range-custom label { font-size: 11px; color: var(--text-faint); }
+  .range-custom input[type="datetime-local"] {
+    font: inherit; font-size: 12px; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px;
+    color-scheme: dark;
+  }
+  .range-apply {
+    font: inherit; font-size: 12px; color: var(--bg); background: var(--accent);
+    border: none; border-radius: 7px; padding: 5px 12px; cursor: pointer; font-weight: 600;
+  }
+  .range-apply:hover { opacity: 0.9; }
+  .range-label { font-size: 11px; color: var(--text-faint); width: 100%; }
+
+  .metrics-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .metric-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px;
+  }
+  .metric-card.warning { border-color: rgba(245,166,35,0.5); }
+  .metric-card.critical { border-color: rgba(239,68,68,0.55); }
+  .metric-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+  .metric-label { font-size: 13px; color: var(--text-dim); }
+  .metric-value { font-size: 26px; font-weight: 700; margin: 2px 0 6px; }
+  .metric-value.unavailable { color: var(--text-faint); font-size: 16px; font-weight: 500; }
+  .metric-sub { font-size: 11px; color: var(--text-faint); }
+  .metric-limits { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+  .metric-limits .w { color: var(--warn); }
+  .metric-limits .c { color: var(--crit); }
+  .metric-empty-range { font-size: 11px; color: var(--text-faint); padding: 14px 0; text-align: center; }
+  canvas.spark { display: block; width: 100%; height: 46px; margin-top: 8px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } .hero { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px;
+  }
+  .panel .row { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .panel .row:last-child { border-bottom: none; }
+  .panel .row .k { color: var(--text-dim); }
+  .panel .row .v { font-weight: 600; }
+  .action-line {
+    margin-top: 10px; padding: 8px 10px; border-radius: 8px;
+    background: var(--warn-bg); color: var(--warn); font-size: 13px;
+  }
+  .confidence-badge {
+    font-size: 10px; text-transform: uppercase; padding: 2px 7px; border-radius: 5px;
+    letter-spacing: 0.04em;
+  }
+  .confidence-badge.low { color: var(--warn); background: var(--warn-bg); }
+  .confidence-badge.medium { color: var(--accent); background: rgba(77,163,255,0.12); }
+  .confidence-badge.high { color: var(--ok); background: var(--ok-bg); }
+
+  .class-tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+  .class-tag.over-provisioned { color: var(--warn); background: var(--warn-bg); }
+  .class-tag.under-provisioned { color: var(--crit); background: var(--crit-bg); }
+  .class-tag.well-sized { color: var(--ok); background: var(--ok-bg); }
+  .class-tag.unknown { color: var(--text-faint); background: rgba(255,255,255,0.05); }
+
+  .rec-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .rec-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .rec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .rec-title { font-weight: 600; font-size: 14px; }
+  .rec-savings { color: var(--ok); font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .rec-detail { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+
+  .cost-disclaimer {
+    font-size: 11px; color: var(--text-faint); margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  footer { color: var(--text-faint); font-size: 11px; text-align: center; margin-top: 30px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">
+      <h1>Database Health Dashboard</h1>
+      <span class="instance-name" id="instanceName">—</span>
+      <span class="mode-badge" id="modeBadge">—</span>
+    </div>
+    <div class="meta" id="lastUpdated">Loading…</div>
+  </div>
+
+  <div class="placeholder-banner" id="placeholderBanner">
+    Showing embedded placeholder data — <code>status.json</code> could not be fetched yet.
+    Start the collector (<code>python collector/collector.py --mock --serve</code>) and open this
+    page via that server, or wait for the first poll to complete.
+  </div>
+
+  <div class="sources-strip" id="sourcesStrip"></div>
+
+  <div class="hero">
+    <div class="score-ring-wrap">
+      <div class="score-num" id="scoreNum">—</div>
+      <div class="score-label" id="scoreLabel">—</div>
+    </div>
+    <div class="hero-summary">
+      <h2>Composite Health Score</h2>
+      <p id="scoreSummary">Every metric combined into one number, weighted by alert severity, so you don't have to mentally fuse several graphs.</p>
+    </div>
+  </div>
+
+  <section>
+    <h3 class="section-title">Active Alerts</h3>
+    <div class="alerts-list" id="alertsList"></div>
+  </section>
+
+  <section id="aiSection" style="display:none;">
+    <h3 class="section-title">AI Root-Cause Analysis</h3>
+    <div id="aiList"></div>
+  </section>
+
+  <section>
+    <h3 class="section-title">Metrics</h3>
+    <div class="range-bar">
+      <div class="range-quick" id="rangeQuick"></div>
+      <div class="range-custom">
+        <label for="rangeFrom">From</label>
+        <input type="datetime-local" id="rangeFrom">
+        <label for="rangeTo">To</label>
+        <input type="datetime-local" id="rangeTo">
+        <button class="range-apply" id="rangeApply" type="button">Apply</button>
+      </div>
+      <div class="range-label" id="rangeLabel"></div>
+    </div>
+    <div class="metrics-grid" id="metricsGrid"></div>
+  </section>
+
+  <section class="two-col">
+    <div class="panel" id="maintenancePanel">
+      <h3 class="section-title">Maintenance Window &amp; Storage Runway</h3>
+      <div id="maintenanceBody"></div>
+    </div>
+    <div class="panel" id="rightsizingPanel">
+      <h3 class="section-title">Right-Sizing &amp; Cost</h3>
+      <div id="rightsizingBody"></div>
+    </div>
+  </section>
+
+  <section>
+    <h3 class="section-title">Recommendations</h3>
+    <div class="rec-list" id="recList"></div>
+  </section>
+
+  <footer>Database Health Dashboard — polls status.json every 15s. Cost figures are list-price estimates, not your invoice.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var POLL_MS = 15000;
+  var METRIC_ORDER = ["cpu", "memory", "connections", "storage", "qps", "disk_io"];
+
+  // Quick time-range buttons for the widget graphs. "All" shows the full
+  // retained history (up to 30 days) sent by the collector. Custom range
+  // is picked via the two calendar/time inputs below.
+  var QUICK_RANGES = [
+    { key: "15m", label: "15m", seconds: 15 * 60 },
+    { key: "30m", label: "30m", seconds: 30 * 60 },
+    { key: "1h", label: "1h", seconds: 60 * 60 },
+    { key: "6h", label: "6h", seconds: 6 * 60 * 60 },
+    { key: "24h", label: "24h", seconds: 24 * 60 * 60 },
+    { key: "7d", label: "7d", seconds: 7 * 24 * 60 * 60 },
+    { key: "30d", label: "30d", seconds: 30 * 24 * 60 * 60 },
+    { key: "all", label: "All", seconds: null }
+  ];
+  var currentRange = { key: "1h", startTs: null, endTs: null };
+  var lastStatus = null;
+
+  // Embedded fallback so the dashboard never shows a blank error screen —
+  // used when status.json can't be fetched (collector not started yet, or
+  // the page was opened via file:// instead of served over HTTP).
+  var PLACEHOLDER_STATUS = {
+    generated_at: new Date().toISOString(),
+    instance_name: "demo-instance (placeholder)",
+    mode: "placeholder",
+    health_score: 92.4,
+    health_label: "Healthy",
+    metrics: {
+      cpu: { label: "CPU Usage", unit: "%", value: 34.2, mean: 36.1, stddev: 8.4, z: -0.22, severity: "ok", warn_limit: 62.9, crit_limit: 75.3, history: demoSeries(35, 8) },
+      memory: { label: "Memory Usage", unit: "%", value: 52.7, mean: 51.0, stddev: 6.2, z: 0.27, severity: "ok", warn_limit: 63.4, crit_limit: 69.6, history: demoSeries(51, 6) },
+      connections: { label: "Total Connections", unit: "conn", value: 24, mean: 27, stddev: 6.5, z: -0.46, severity: "ok", warn_limit: 40.0, crit_limit: 46.5, history: demoSeries(27, 7) },
+      storage: { label: "Storage Usage", unit: "%", value: 58.1, mean: 57.4, stddev: 1.1, z: 0.6, severity: "ok", warn_limit: 59.6, crit_limit: 60.7, history: demoSeries(57, 1) },
+      qps: { label: "MySQL Queries (QPS)", unit: "q/s", value: 118, mean: 110, stddev: 22, z: 0.36, severity: "ok", warn_limit: 154.0, crit_limit: 176.0, history: demoSeries(110, 22) },
+      disk_io: { label: "Disk Read/Write Ops", unit: "ops/s", value: 96, mean: 102, stddev: 18, z: -0.33, severity: "ok", warn_limit: 138.0, crit_limit: 156.0, history: demoSeries(102, 18) }
+    },
+    alerts: [],
+    maintenance: { available: true, window_utc: "02:00-04:00 UTC", basis: "Lowest combined connection+query load across observed hours-of-day." },
+    storage_runway: { available: true, trend: "flat_or_decreasing", days_until_90pct: null, message: "Storage usage is flat or decreasing — no runway concern." },
+    rightsizing: {
+      confidence: "medium", days_of_history: 6.0,
+      dimensions: {
+        cpu: { mean: 36.1, p95: 54.0, classification: "well-sized", n: 400 },
+        memory: { mean: 51.0, p95: 63.0, classification: "well-sized", n: 400 },
+        storage: { mean: 57.4, p95: 58.9, classification: "well-sized", n: 400 }
+      }
+    },
+    provisioned_spec: { source: "manual_fallback", vcpus: 2, memory_gb: 8, storage_gb: 100, ha: false },
+    cost_estimate: { compute_usd: 101.18, storage_usd: 17.0, total_usd: 118.18, ha_applied: false },
+    recommendations: [],
+    ai_analysis: { available: false, reason: "This is placeholder data — start the collector to see live AI analysis.", issues: [] },
+    data_sources: {
+      gcp_monitoring: { available: false, reason: "Placeholder data — collector not running." },
+      mysql: { available: false, reason: "Placeholder data — collector not running." },
+      ai_analysis: { available: false, reason: "Placeholder data — collector not running." }
+    }
+  };
+
+  // 3 days at 10-minute resolution, with a daily business-hours curve, so
+  // every quick-range button (including 24h/7d) and the calendar picker
+  // have something meaningful to show even in placeholder mode.
+  function demoSeries(mean, spread) {
+    var out = [];
+    var now = Date.now() / 1000;
+    var stepSeconds = 600;
+    var totalPoints = Math.floor((3 * 24 * 3600) / stepSeconds);
+    for (var i = totalPoints; i >= 0; i--) {
+      var ts = now - i * stepSeconds;
+      var hour = (ts / 3600) % 24;
+      var daily = 0.5 + 0.5 * Math.sin((hour - 8) / 24 * 2 * Math.PI);
+      var v = mean + (daily - 0.5) * spread * 1.2 + (Math.random() - 0.5) * spread * 0.4;
+      out.push({ ts: ts, value: Math.max(0, +v.toFixed(2)) });
+    }
+    return out;
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fmtValue(v, unit) {
+    if (v === null || v === undefined) return "—";
+    if (unit === "%") return v.toFixed(1) + "%";
+    if (unit === "GB") return v.toFixed(1) + " GB";
+    return v.toFixed(1) + " " + unit;
+  }
+
+  function timeAgo(iso) {
+    var diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 5) return "just now";
+    if (diff < 60) return Math.floor(diff) + "s ago";
+    if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+    return Math.floor(diff / 3600) + "h ago";
+  }
+
+  function severityColor(sev) {
+    if (sev === "critical") return getCss("--crit");
+    if (sev === "warning") return getCss("--warn");
+    if (sev === "unavailable") return getCss("--unavail");
+    return getCss("--ok");
+  }
+
+  var _cssCache = {};
+  function getCss(varName) {
+    if (!_cssCache[varName]) {
+      _cssCache[varName] = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    }
+    return _cssCache[varName];
+  }
+
+  function drawSparkline(canvas, points, severity, warnLimit, critLimit) {
+    var ratio = window.devicePixelRatio || 1;
+    var w = canvas.clientWidth || 240;
+    var h = canvas.clientHeight || 46;
+    canvas.width = w * ratio;
+    canvas.height = h * ratio;
+    var ctx = canvas.getContext("2d");
+    ctx.scale(ratio, ratio);
+    ctx.clearRect(0, 0, w, h);
+
+    var values = points.map(function (p) { return p.value; }).filter(function (v) { return typeof v === "number"; });
+    if (values.length < 2) return;
+
+    // Extend the scale to include the warn/crit limit lines when they're
+    // within a sane distance of the data, so you can see how close the
+    // trend is to tripping an alert, not just where it's already been.
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var dataSpan = (max - min) || 1;
+    [warnLimit, critLimit].forEach(function (lim) {
+      if (typeof lim === "number" && lim <= max + dataSpan * 2) {
+        max = Math.max(max, lim);
+        min = Math.min(min, lim);
+      }
+    });
+    var range = (max - min) || 1;
+    var color = severityColor(severity);
+    var n = points.length;
+    var stepX = w / Math.max(1, n - 1);
+    var padTop = 4, padBottom = 4;
+    var plotH = h - padTop - padBottom;
+
+    function yFor(v) { return h - padBottom - ((v - min) / range) * plotH; }
+
+    ctx.beginPath();
+    var started = false;
+    var coords = [];
+    for (var i = 0; i < n; i++) {
+      var v = points[i].value;
+      var x = i * stepX;
+      if (typeof v !== "number") { coords.push(null); continue; }
+      var y = yFor(v);
+      coords.push([x, y]);
+      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // Fill under the line for a bit of visual weight.
+    var lastValid = coords.slice().reverse().find(function (c) { return c; });
+    var firstValid = coords.find(function (c) { return c; });
+    if (firstValid && lastValid) {
+      ctx.lineTo(lastValid[0], h);
+      ctx.lineTo(firstValid[0], h);
+      ctx.closePath();
+      ctx.fillStyle = color + "22";
+      ctx.fill();
+    }
+
+    function drawLimitLine(lim, lineColor) {
+      if (typeof lim !== "number") return;
+      var y = yFor(lim);
+      if (y < 0 || y > h) return;
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    drawLimitLine(warnLimit, getCss("--warn"));
+    drawLimitLine(critLimit, getCss("--crit"));
+  }
+
+  function renderSourcesStrip(dataSources) {
+    var el = document.getElementById("sourcesStrip");
+    var labels = { gcp_monitoring: "GCP Monitoring", mysql: "MySQL", ai_analysis: "AI Analysis" };
+    var html = "";
+    Object.keys(labels).forEach(function (key) {
+      var s = dataSources[key] || { available: false, reason: "No data." };
+      var dotClass = s.available ? "ok" : "bad";
+      html += '<div class="source-pill"><span class="dot ' + dotClass + '"></span>' +
+        '<span>' + labels[key] + '</span>';
+      if (!s.available && s.reason) {
+        html += '<span class="reason">— ' + esc(s.reason) + '</span>';
+      }
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  }
+
+  function renderHero(status) {
+    document.getElementById("instanceName").textContent = status.instance_name;
+    var modeBadge = document.getElementById("modeBadge");
+    modeBadge.textContent = status.mode;
+    modeBadge.className = "mode-badge" + (status.mode === "mock" || status.mode === "placeholder" ? " mock" : "");
+    document.getElementById("lastUpdated").textContent = "Updated " + timeAgo(status.generated_at);
+
+    document.getElementById("scoreNum").textContent = status.health_score.toFixed(0);
+    var scoreLabelEl = document.getElementById("scoreLabel");
+    scoreLabelEl.textContent = status.health_label;
+    scoreLabelEl.className = "score-label " + status.health_label;
+
+    var activeCount = status.alerts.length;
+    document.getElementById("scoreSummary").textContent = activeCount === 0
+      ? "All metrics are within this instance's own normal range. No active alerts."
+      : activeCount + " active alert" + (activeCount > 1 ? "s" : "") + " are dragging the score down — see below for plain-English detail and suggested fixes.";
+  }
+
+  function renderAlerts(alerts) {
+    var el = document.getElementById("alertsList");
+    if (!alerts.length) {
+      el.innerHTML = '<div class="empty-note">No active alerts — every metric is within this instance\'s own statistical baseline and below hard safety ceilings.</div>';
+      return;
+    }
+    el.innerHTML = alerts.map(function (a) {
+      return '<div class="alert-card ' + a.severity + '">' +
+        '<div class="alert-head"><span class="sev-badge ' + a.severity + '">' + a.severity + '</span></div>' +
+        '<div class="alert-msg">' + esc(a.message) + '</div>' +
+        '<div class="alert-action"><b>Suggested action:</b> ' + esc(a.suggested_action) + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function renderAi(aiAnalysis) {
+    var section = document.getElementById("aiSection");
+    var el = document.getElementById("aiList");
+    if (!aiAnalysis || !aiAnalysis.available || !aiAnalysis.issues || !aiAnalysis.issues.length) {
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "";
+    el.innerHTML = aiAnalysis.issues.map(function (issue) {
+      return '<div class="ai-card">' +
+        '<div class="metric-name">' + esc(issue.metric) +
+        (aiAnalysis.from_cache ? '<span class="ai-tag">cached</span>' : '<span class="ai-tag">' + esc(aiAnalysis.model || "ai") + '</span>') +
+        '</div>' +
+        '<div class="ai-row"><b>Likely root cause:</b> ' + esc(issue.likely_root_cause) + '</div>' +
+        '<div class="ai-row"><b>Immediate fix:</b> ' + esc(issue.immediate_fix) + '</div>' +
+        '<div class="ai-row"><b>Preventive action:</b> ' + esc(issue.preventive_action) + '</div>' +
+        '<div class="ai-row"><b>Confidence:</b> ' + esc(issue.confidence) + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function resolveRangeBounds() {
+    var now = Date.now() / 1000;
+    if (currentRange.key === "custom") {
+      return { startTs: currentRange.startTs, endTs: currentRange.endTs };
+    }
+    var def = QUICK_RANGES.find(function (r) { return r.key === currentRange.key; });
+    if (!def || def.seconds === null) return { startTs: null, endTs: null }; // "All"
+    return { startTs: now - def.seconds, endTs: now };
+  }
+
+  function filterHistory(history, bounds) {
+    if (!history) return [];
+    if (bounds.startTs === null && bounds.endTs === null) return history;
+    return history.filter(function (p) {
+      return (bounds.startTs === null || p.ts >= bounds.startTs) &&
+             (bounds.endTs === null || p.ts <= bounds.endTs);
+    });
+  }
+
+  function fmtLimit(v, unit) {
+    return v === null || v === undefined ? null : fmtValue(v, unit);
+  }
+
+  function renderMetrics(metrics) {
+    var el = document.getElementById("metricsGrid");
+    var bounds = resolveRangeBounds();
+
+    el.innerHTML = METRIC_ORDER.map(function (id) {
+      var m = metrics[id];
+      if (!m) return "";
+      var unavailable = m.severity === "unavailable" || m.value === null || m.value === undefined;
+      var cardClass = "metric-card" + (!unavailable && (m.severity === "warning" || m.severity === "critical") ? " " + m.severity : "");
+      var valueHtml = unavailable
+        ? '<div class="metric-value unavailable">Unavailable</div>'
+        : '<div class="metric-value">' + fmtValue(m.value, m.unit) + '</div>';
+      var subHtml = "";
+      if (!unavailable && m.mean !== null && m.mean !== undefined) {
+        subHtml = 'baseline ' + fmtValue(m.mean, m.unit) + (m.z !== null && m.z !== undefined ? ' · z=' + m.z.toFixed(1) : '');
+      } else if (!unavailable) {
+        subHtml = "collecting baseline…";
+      } else {
+        subHtml = "no reading this cycle";
+      }
+
+      var warnS = fmtLimit(m.warn_limit, m.unit), critS = fmtLimit(m.crit_limit, m.unit);
+      var limitsHtml = '<div class="metric-limits">';
+      limitsHtml += warnS ? '<span class="w">warn ≥ ' + warnS + '</span>' : '<span>warn limit —</span>';
+      limitsHtml += '  ·  ';
+      limitsHtml += critS ? '<span class="c">crit ≥ ' + critS + '</span>' : '<span>crit limit —</span>';
+      limitsHtml += '</div>';
+
+      var filtered = filterHistory(m.history, bounds);
+      var chartHtml = filtered.length >= 2
+        ? '<canvas class="spark" id="spark-' + id + '"></canvas>'
+        : '<div class="metric-empty-range">Not enough data points in this range yet.</div>';
+
+      return '<div class="' + cardClass + '">' +
+        '<div class="metric-top"><span class="metric-label">' + esc(m.label) + '</span></div>' +
+        valueHtml +
+        '<div class="metric-sub">' + subHtml + '</div>' +
+        limitsHtml +
+        chartHtml +
+        '</div>';
+    }).join("");
+
+    METRIC_ORDER.forEach(function (id) {
+      var m = metrics[id];
+      if (!m) return;
+      var filtered = filterHistory(m.history, bounds);
+      var canvas = document.getElementById("spark-" + id);
+      if (canvas && filtered.length >= 2) {
+        drawSparkline(canvas, filtered, m.severity, m.warn_limit, m.crit_limit);
+      }
+    });
+  }
+
+  function fmtDateTimeLocal(date) {
+    function pad(n) { return String(n).padStart(2, "0"); }
+    return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) +
+      "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
+  }
+
+  function updateRangeLabel() {
+    var el = document.getElementById("rangeLabel");
+    if (currentRange.key === "custom") {
+      el.textContent = "Custom range: " + new Date(currentRange.startTs * 1000).toLocaleString() +
+        " – " + new Date(currentRange.endTs * 1000).toLocaleString();
+    } else if (currentRange.key === "all") {
+      el.textContent = "Showing all retained history (up to 30 days).";
+    } else {
+      var def = QUICK_RANGES.find(function (r) { return r.key === currentRange.key; });
+      el.textContent = "Showing the last " + (def ? def.label : currentRange.key) + ".";
+    }
+  }
+
+  function applyRange(key, startTs, endTs) {
+    currentRange = { key: key, startTs: startTs || null, endTs: endTs || null };
+    document.querySelectorAll(".range-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.key === key);
+    });
+    updateRangeLabel();
+    if (lastStatus) renderMetrics(lastStatus.metrics);
+  }
+
+  function initRangeBar() {
+    var quickEl = document.getElementById("rangeQuick");
+    quickEl.innerHTML = QUICK_RANGES.map(function (r) {
+      return '<button type="button" class="range-btn' + (r.key === currentRange.key ? " active" : "") +
+        '" data-key="' + r.key + '">' + esc(r.label) + '</button>';
+    }).join("");
+    quickEl.querySelectorAll(".range-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () { applyRange(btn.dataset.key); });
+    });
+
+    document.getElementById("rangeApply").addEventListener("click", function () {
+      var fromEl = document.getElementById("rangeFrom");
+      var toEl = document.getElementById("rangeTo");
+      var fromTs = fromEl.value ? new Date(fromEl.value).getTime() / 1000 : null;
+      var toTs = toEl.value ? new Date(toEl.value).getTime() / 1000 : null;
+      if (!fromTs || !toTs || fromTs >= toTs) {
+        alert("Pick a valid \"From\" date/time earlier than \"To\".");
+        return;
+      }
+      applyRange("custom", fromTs, toTs);
+    });
+
+    var now = new Date();
+    var hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    document.getElementById("rangeFrom").value = fmtDateTimeLocal(hourAgo);
+    document.getElementById("rangeTo").value = fmtDateTimeLocal(now);
+    updateRangeLabel();
+  }
+
+  function renderMaintenance(status) {
+    var el = document.getElementById("maintenanceBody");
+    var mw = status.maintenance, runway = status.storage_runway;
+    var html = "";
+
+    html += '<div class="row"><span class="k">Recommended maintenance window</span><span class="v">' +
+      (mw.available ? esc(mw.window_utc) : "—") + '</span></div>';
+    if (mw.available) {
+      html += '<div class="metric-sub" style="margin:-4px 0 8px;">' + esc(mw.basis) + '</div>';
+    } else {
+      html += '<div class="empty-note">' + esc(mw.reason) + '</div>';
+    }
+
+    html += '<div class="row"><span class="k">Storage runway to ~90%</span><span class="v">' +
+      (runway.available && runway.days_until_90pct !== null && runway.days_until_90pct !== undefined
+        ? runway.days_until_90pct + " days"
+        : (runway.available ? "no growth trend" : "—")) + '</span></div>';
+    if (!runway.available) {
+      html += '<div class="empty-note">' + esc(runway.reason) + '</div>';
+    } else if (runway.projected_90pct_date) {
+      html += '<div class="metric-sub">projected date: ' + esc(runway.projected_90pct_date) + '</div>';
+    }
+    if (runway.action) {
+      html += '<div class="action-line">' + esc(runway.action) + '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function renderRightsizing(status) {
+    var el = document.getElementById("rightsizingBody");
+    var rs = status.rightsizing, spec = status.provisioned_spec, cost = status.cost_estimate;
+    var html = "";
+
+    html += '<div class="row"><span class="k">Confidence</span><span class="v">' +
+      '<span class="confidence-badge ' + rs.confidence + '">' + rs.confidence + '</span> ' +
+      '<span class="metric-sub">(' + rs.days_of_history + 'd history)</span></span></div>';
+
+    ["cpu", "memory", "storage"].forEach(function (dim) {
+      var d = rs.dimensions[dim];
+      html += '<div class="row"><span class="k">' + dim.toUpperCase() + ' mean/p95</span><span class="v">' +
+        (d.mean !== null ? d.mean + '% / ' + d.p95 + '%' : '—') +
+        ' <span class="class-tag ' + d.classification + '">' + d.classification + '</span></span></div>';
+    });
+
+    html += '<div class="row"><span class="k">Provisioned spec</span><span class="v">' +
+      spec.vcpus + ' vCPU · ' + spec.memory_gb + ' GB · ' + spec.storage_gb + ' GB disk' +
+      (spec.ha ? ' · HA' : '') + '</span></div>';
+    html += '<div class="row"><span class="k">Spec source</span><span class="v" style="font-weight:400; color:var(--text-faint); font-size:12px;">' +
+      esc(spec.source) + (spec.reason ? " — " + esc(spec.reason) : "") + '</span></div>';
+
+    html += '<div class="row"><span class="k">Estimated monthly cost</span><span class="v">$' + cost.total_usd.toFixed(2) + '</span></div>';
+    html += '<div class="cost-disclaimer">Estimate from editable public list-price assumptions in collector/cost_config.json — not your actual invoice or negotiated rate.</div>';
+
+    el.innerHTML = html;
+  }
+
+  function renderRecommendations(recs) {
+    var el = document.getElementById("recList");
+    if (!recs.length) {
+      el.innerHTML = '<div class="empty-note">No cost or right-sizing recommendations right now.</div>';
+      return;
+    }
+    el.innerHTML = recs.map(function (r) {
+      return '<div class="rec-card">' +
+        '<div class="rec-head"><span class="rec-title">' + esc(r.title) + '</span>' +
+        (r.estimated_monthly_savings_usd > 0
+          ? '<span class="rec-savings">~$' + r.estimated_monthly_savings_usd.toFixed(2) + '/mo</span>'
+          : '') +
+        '</div>' +
+        '<div class="rec-detail">' + esc(r.detail) + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function render(status, isPlaceholder) {
+    lastStatus = status;
+    document.getElementById("placeholderBanner").style.display = isPlaceholder ? "block" : "none";
+    renderSourcesStrip(status.data_sources);
+    renderHero(status);
+    renderAlerts(status.alerts);
+    renderAi(status.ai_analysis);
+    renderMetrics(status.metrics);
+    renderMaintenance(status);
+    renderRightsizing(status);
+    renderRecommendations(status.recommendations);
+  }
+
+  function poll() {
+    fetch("status.json", { cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("status.json not OK: " + res.status);
+        return res.json();
+      })
+      .then(function (data) { render(data, false); })
+      .catch(function () { render(PLACEHOLDER_STATUS, true); });
+  }
+
+  initRangeBar();
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>
+</body>
+</html>

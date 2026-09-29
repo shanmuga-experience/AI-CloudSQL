@@ -1,0 +1,7 @@
+# Only needed for REAL (non --mock) data collection. Each is imported lazily
+# and its absence degrades only that specific data source (see README) —
+# --mock mode needs none of these; the standard library is enough.
+
+pymysql>=1.1              # direct MySQL SHOW GLOBAL STATUS / VARIABLES
+google-cloud-monitoring>=2.21  # GCP Cloud Monitoring metrics (CPU/mem/disk)
+google-auth>=2.29         # ADC + OAuth token for the Cloud SQL Admin REST API
