@@ -511,9 +511,17 @@
     scoreLabelEl.className = "score-label " + status.health_label;
 
     var activeCount = status.alerts.length;
-    document.getElementById("scoreSummary").textContent = activeCount === 0
-      ? "All metrics are within this instance's own normal range. No active alerts."
-      : activeCount + " active alert" + (activeCount > 1 ? "s" : "") + " are dragging the score down — see below for plain-English detail and suggested fixes.";
+    var metrics = status.metrics || {};
+    var unavailableCount = Object.keys(metrics).filter(function (k) {
+      var m = metrics[k];
+      return m.severity === "unavailable" || m.value === null || m.value === undefined;
+    }).length;
+    var missingNote = unavailableCount
+      ? " " + unavailableCount + " metric" + (unavailableCount > 1 ? "s are" : " is") + " unavailable, which lowers the score (missing data is not treated as healthy)."
+      : "";
+    document.getElementById("scoreSummary").textContent = (activeCount === 0
+      ? (unavailableCount ? "No active alerts." : "All metrics are within this instance's own normal range. No active alerts.")
+      : activeCount + " active alert" + (activeCount > 1 ? "s" : "") + " are dragging the score down — see below for plain-English detail and suggested fixes.") + missingNote;
   }
 
   function renderAlerts(alerts) {

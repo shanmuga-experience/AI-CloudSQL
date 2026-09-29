@@ -116,6 +116,12 @@ def composite_health_score(evaluations):
             score -= 20 * weight
         elif ev["severity"] == "warning":
             score -= 8 * weight
+        elif ev["severity"] == "unavailable":
+            # Missing data is not good health. Without this penalty a collector whose
+            # GCP and MySQL sources had both failed still reported 100 "Healthy".
+            # 10*weight: one lost source is at least Degraded, both lost is Critical,
+            # while QPS's normal first-poll gap (it needs two polls) stays Healthy.
+            score -= 10 * weight
     score = max(0.0, min(100.0, score))
     if score >= 85:
         label = "Healthy"
